@@ -1,46 +1,30 @@
-# kics-scan disable=965a08d7-ef86-4f14-8792-4a3b2098937e
+FROM node:18@sha256:cd7fa8f136023f7500490e410ba70dd3982ccca21805264f2a260a3a97be7376
 
-# ---- base image ----
-FROM node:17.9.1-stretch-slim
-
-# ---- meta data ----
-LABEL name="node-puppeteer"
-LABEL maintainer="Ahmad Nassri <ahmad@ahmadnassri.com>"
-
-# ---- install latest chrome dev package and fonts ----
-# hadolint ignore=DL3008,DL4006
+# Install latest chrome dev package and fonts to support major charsets (Chinese, Japanese, Arabic, Hebrew, Thai and a few others)
+# Note: this installs the necessary libs to make the bundled version of Chrome that Puppeteer
+# installs, work.
 RUN apt-get update \
-  && apt-get install --no-install-recommends -y g++ make python wget gnupg \
-  && wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - \
-  && sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list' \
-  && apt-get update \
-  && apt-get install -y google-chrome-unstable fonts-ipafont-gothic fonts-wqy-zenhei fonts-thai-tlwg fonts-kacst fonts-freefont-ttf \
-  --no-install-recommends \
-  && rm -rf /var/lib/apt/lists/*
+    && apt-get install -y wget gnupg \
+    && wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | gpg --dearmor -o /usr/share/keyrings/googlechrome-linux-keyring.gpg \
+    && sh -c 'echo "deb [arch=amd64 signed-by=/usr/share/keyrings/googlechrome-linux-keyring.gpg] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list' \
+    && apt-get update \
+    && apt-get install -y google-chrome-stable fonts-ipafont-gothic fonts-wqy-zenhei fonts-thai-tlwg fonts-khmeros fonts-kacst fonts-freefont-ttf libxss1 dbus dbus-x11 \
+      --no-install-recommends \
+    && service dbus start \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd -r pptruser && useradd -rm -g pptruser -G audio,video pptruser
 
-# ---- tell puppeteer to skip installing chromium ----
-ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
-  PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome-unstable
-
-# ---- Add user so we don't need --no-sandbox ----
-RUN groupadd -r pptruser && useradd -r -g pptruser -G audio,video pptruser \
-  && mkdir -p /home/pptruser/Downloads \
-  && mkdir -p /home/pptruser/.npm-global/lib \
-  && chown -R pptruser:pptruser /home/pptruser
-
-# ---- configure global node_modules path
-ENV NPM_CONFIG_PREFIX=/home/pptruser/.npm-global \
-  PATH=$PATH:/home/pptruser/.npm-global/bin
-
-# ---- run everything as non-privileged user ----
 USER pptruser
 
-# ---- install dependencies globally ----
 WORKDIR /home/pptruser
-COPY src/* /home/pptruser/
-RUN node /home/pptruser/install.js
 
-# ---- create app directory ----
-WORKDIR /app
+COPY puppeteer-browsers-latest.tgz puppeteer-latest.tgz puppeteer-core-latest.tgz ./
 
-HEALTHCHECK NONE
+ENV DBUS_SESSION_BUS_ADDRESS autolaunch:
+
+# Install @puppeteer/browsers, puppeteer and puppeteer-core into /home/pptruser/node_modules.
+RUN npm i ./puppeteer-browsers-latest.tgz ./puppeteer-core-latest.tgz ./puppeteer-latest.tgz \
+    && rm ./puppeteer-browsers-latest.tgz ./puppeteer-core-latest.tgz ./puppeteer-latest.tgz \
+    && (node -e "require('child_process').execSync(require('puppeteer').executablePath() + ' --credits', {stdio: 'inherit'})" > THIRD_PARTY_NOTICES)
+
+CMD ["google-chrome-stable"]
