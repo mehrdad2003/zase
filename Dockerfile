@@ -1,4 +1,4 @@
-FROM ghcr.io/puppeteer/puppeteer:19.7.2
+
 RUN apt-get update \
   && apt-get install --no-install-recommends -y g++ make python wget gnupg \
   && wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - \
